@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SDK 数据后台</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Operation Console</p>
+        <h1>SDK 数据后台</h1>
+      </div>
+      <nav class="actions" aria-label="后台操作">
+        <a href="/" title="打开测试站点">站点</a>
+        <a href="/__hits" title="查看原始命中">原始</a>
+        <button id="refreshBtn" type="button" title="刷新数据">刷新</button>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="metrics" id="metrics" aria-label="核心指标"></section>
+
+      <section class="workbench">
+        <aside class="sessions">
+          <div class="section-head">
+            <h2>会话</h2>
+            <span id="sessionCount">0</span>
+          </div>
+          <div id="sessions"></div>
+        </aside>
+
+        <section class="timeline-panel">
+          <div class="section-head">
+            <h2>用户操作时间线</h2>
+            <select id="domainFilter" aria-label="事件域筛选">
+              <option value="all">全部</option>
+              <option value="operation">运营侧</option>
+              <option value="developer">开发者侧</option>
+            </select>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+
+        <aside class="detail">
+          <div class="section-head">
+            <h2>事件解析</h2>
+            <span id="selectedEvent">未选择</span>
+          </div>
+          <pre id="detail"></pre>
+        </aside>
+      </section>
+
+      <section class="insights">
+        <div>
+          <div class="section-head">
+            <h2>热力图</h2>
+            <span id="heatmapTotal">0 次</span>
+          </div>
+          <div id="heatmap" class="heatmap"></div>
+        </div>
+        <div>
+          <div class="section-head">
+            <h2>录屏分片</h2>
+            <span id="replayCount">0</span>
+          </div>
+          <div id="replayList" class="replay-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <template id="emptyState">
+      <div class="empty">暂无数据。打开测试站点并触发点击、表单或转化后再刷新。</div>
+    </template>
+
+    <script type="module" src="/admin/admin.js"></script>
+  </body>
+</html>

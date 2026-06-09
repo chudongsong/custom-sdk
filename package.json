@@ -1,0 +1,25 @@
+{
+  "name": "custom-analytics-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "vite build",
+    "demo": "node examples/mock-site/server.mjs",
+    "demo:server": "node examples/mock-site/server.mjs",
+    "test:demo": "npm run build && node examples/mock-site/smoke-test.mjs",
+    "verify": "npm run test && npm run test:demo"
+  },
+  "dependencies": {
+    "@rrweb/record": "^2.0.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^7.2.1",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.2.7",
+    "vitest": "^3.2.4"
+  }
+}
