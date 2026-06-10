@@ -7,12 +7,20 @@ class TestImage {
 
   set src(value: string) {
     TestImage.requests.push(value);
-    queueMicrotask(() => this.onload?.());
+    queueMicrotask(() => {
+      if (TestImage.failuresRemaining > 0) {
+        TestImage.failuresRemaining -= 1;
+        this.onerror?.();
+        return;
+      }
+      this.onload?.();
+    });
   }
 }
 
 namespace TestImage {
   export const requests: string[] = [];
+  export let failuresRemaining = 0;
 }
 
 Object.defineProperty(globalThis, "Image", {
@@ -27,6 +35,7 @@ Object.defineProperty(navigator, "onLine", {
 
 beforeEach(() => {
   TestImage.requests.length = 0;
+  TestImage.failuresRemaining = 0;
   document.body.innerHTML = "";
   localStorage.clear();
   vi.useRealTimers();
@@ -34,4 +43,8 @@ beforeEach(() => {
 
 export function getPixelRequests() {
   return [...TestImage.requests];
+}
+
+export function failNextPixelRequests(count: number) {
+  TestImage.failuresRemaining = count;
 }

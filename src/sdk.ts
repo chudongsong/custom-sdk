@@ -1,5 +1,6 @@
 import { BehaviorPathPipeline } from "./behavior-path";
 import { HeatmapAggregator } from "./heatmap";
+import { OfflineEventStore } from "./offline-store";
 import { getSensitiveKeys, maskRecord, maskString, maskUrl, truncate } from "./privacy";
 import { PixelTransport } from "./pixel-transport";
 import type { BehaviorPathEvent } from "./behavior-path";
@@ -20,6 +21,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
   private replay?: ReplayRecorderLike;
   private heatmap?: HeatmapAggregator;
   private behavior?: BehaviorPathPipeline;
+  private offlineStore?: OfflineEventStore;
   private pageStart = 0;
   private lastPageUrl = "";
   private cleanupFns: Array<() => void> = [];
@@ -43,6 +45,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     this.distinctId = this.loadOrCreateId("__custom_sdk_distinct_id__", "visitor");
     this.sessionId = this.loadOrCreateId("__custom_sdk_session_id__", "session");
     this.transport = new PixelTransport(config.endpoint, config.transport);
+    this.offlineStore = new OfflineEventStore(config.appId, config.transport?.offlineMaxEvents);
     this.pageStart = this.now();
     this.sessionStartedAt = this.pageStart;
     this.lastActiveAt = this.pageStart;
@@ -111,21 +114,30 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     if (options.includeReplay !== false) this.flushReplay();
     if (options.includeHeatmap !== false) this.flushHeatmap();
 
+    if (this.isOffline()) {
+      await this.persistOfflineEvents([...this.queue]);
+      this.queue = [];
+      return;
+    }
+
+    await this.restoreOfflineEvents();
+
     const events = [...this.queue];
     this.queue = [];
+    const failed: SDKEvent[] = [];
     for (const event of events) {
-      const result = this.transport.createUrl(event);
+      const result = await this.sendWithRetry(event);
       if (result.tooLong) {
         if (event.event !== "$sdk_diagnostic") {
           await this.emitDiagnostic("url_length_exceeded");
         }
         continue;
       }
-      const ok = await this.transport.send(result.url);
-      if (!ok) {
-        this.queue.push(event);
+      if (!result.ok) {
+        failed.push(event);
       }
     }
+    await this.persistOfflineEvents(failed);
   }
 
   destroy(): void {
@@ -148,6 +160,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     this.replay = undefined;
     this.heatmap = undefined;
     this.behavior = undefined;
+    this.offlineStore = undefined;
     this.transport = undefined;
     this.replayStartSent = false;
     this.replayLoadToken += 1;
@@ -187,6 +200,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       this.queue.shift();
       void this.emitDiagnostic("queue_dropped", { dropped_count: 1 });
     }
+    this.flushIfBatchReady();
   }
 
   private runBeforeSend(event: SDKEvent): SDKEvent | false {
@@ -209,6 +223,58 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       const result = this.transport.createUrl(diagnostic, true);
       await this.transport.send(result.url);
     }
+  }
+
+  private async sendWithRetry(event: SDKEvent): Promise<{ ok: boolean; tooLong: boolean }> {
+    if (!this.transport) return { ok: false, tooLong: false };
+    const retryCount = Math.max(0, this.config?.transport?.retryCount ?? 0);
+    const baseDelay = Math.max(0, this.config?.transport?.retryBaseDelay ?? 300);
+
+    for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+      const result = this.transport.createUrl(event);
+      if (result.tooLong) return { ok: false, tooLong: true };
+      const ok = await this.transport.send(result.url);
+      if (ok) return { ok: true, tooLong: false };
+      if (attempt < retryCount && baseDelay > 0) {
+        await delay(baseDelay * (2 ** attempt));
+      }
+    }
+
+    return { ok: false, tooLong: false };
+  }
+
+  private async persistOfflineEvents(events: SDKEvent[]) {
+    if (!events.length) return;
+    if (this.offlineStore) {
+      await this.offlineStore.append(events);
+      return;
+    }
+    this.queue.unshift(...events);
+  }
+
+  private async restoreOfflineEvents() {
+    if (!this.offlineStore) return;
+    const events = await this.offlineStore.drain();
+    if (events.length) {
+      const replayed = events.map((event) => ({
+        ...event,
+        event_properties: {
+          ...event.event_properties,
+          delivery_status: "offline_replayed"
+        }
+      }));
+      this.queue = [...replayed, ...this.queue];
+    }
+  }
+
+  private flushIfBatchReady() {
+    const batchSize = this.config?.batchSize;
+    if (!batchSize || batchSize <= 0 || this.queue.length < batchSize) return;
+    void this.flush();
+  }
+
+  private isOffline() {
+    return typeof navigator !== "undefined" && navigator.onLine === false;
   }
 
   private setupReplay(config: SDKConfig) {
@@ -266,6 +332,9 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       this.emitPageLeave("pagehide");
       void this.flush();
     };
+    const online = () => {
+      void this.flush();
+    };
     const visibilitychange = () => {
       this.emit("$visibility_change", "operation", "behavior", {
         visibility_state: document.visibilityState,
@@ -279,6 +348,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     };
     window.addEventListener("popstate", popstate);
     window.addEventListener("pagehide", pagehide);
+    window.addEventListener("online", online);
     if (config.lifecycle?.visibility) {
       document.addEventListener("visibilitychange", visibilitychange);
     }
@@ -294,6 +364,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       },
       () => window.removeEventListener("popstate", popstate),
       () => window.removeEventListener("pagehide", pagehide),
+      () => window.removeEventListener("online", online),
       () => document.removeEventListener("visibilitychange", visibilitychange)
     );
   }
@@ -889,4 +960,8 @@ function deviceType() {
   if (/ipad|tablet/.test(ua) || (width >= 768 && width < 1024 && /mobile/.test(ua))) return "tablet";
   if (/mobi|iphone|android/.test(ua) || width < 768) return "mobile";
   return "desktop";
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

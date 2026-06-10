@@ -158,10 +158,23 @@ sdk.init({
   transport: {
     pixelEndpoint: "https://analytics.example.com/aly.gif",
     pixelMaxUrlLength: 1800,
-    cacheBust: true
+    cacheBust: true,
+    retryCount: 2,
+    retryBaseDelay: 300,
+    offlineMaxEvents: 1000
   }
 });
 ```
+
+可靠推送相关字段：
+
+| 字段 | 含义 | 默认 |
+| --- | --- | --- |
+| `batchSize` | 队列达到阈值后自动触发 `flush()`。 | 未启用 |
+| `flushInterval` | 定时触发 `flush()`。 | 未启用 |
+| `retryCount` | 单条像素请求失败后的重试次数。 | `0` |
+| `retryBaseDelay` | 重试基础延迟，按指数退避增长。 | `300` |
+| `offlineMaxEvents` | 离线缓存最大事件数。 | `1000` |
 
 ## 8. 浏览器实现建议
 

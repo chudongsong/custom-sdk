@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSDK } from "../src";
-import { getPixelRequests } from "./setup";
+import { failNextPixelRequests, getPixelRequests } from "./setup";
 import { parseHits } from "../examples/admin/admin-parser";
 
 describe("custom analytics sdk", () => {
@@ -661,6 +661,90 @@ describe("custom analytics sdk", () => {
     expect(joined).toContain("url_length_exceeded");
   });
 
+  it("automatically flushes when batchSize is reached", async () => {
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      batchSize: 3,
+      transport: {
+        cacheBust: false
+      }
+    });
+
+    sdk.track("batch_triggered", { source: "batch-test" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const joined = getPixelRequests().map(decodeURIComponent).join("\n");
+    expect(joined).toContain("evt=$session_start");
+    expect(joined).toContain("evt=$pageview");
+    expect(joined).toContain("evt=batch_triggered");
+  });
+
+  it("retries failed pixel uploads before keeping events queued", async () => {
+    failNextPixelRequests(1);
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      transport: {
+        cacheBust: false,
+        retryCount: 1,
+        retryBaseDelay: 0
+      }
+    });
+
+    await sdk.flush();
+
+    const requests = getPixelRequests().map(decodeURIComponent);
+    const sessionAttempts = requests.filter((url) => url.includes("evt=$session_start"));
+    expect(sessionAttempts).toHaveLength(2);
+    expect(requests.join("\n")).toContain("evt=$pageview");
+  });
+
+  it("persists offline events and replays them after the browser reconnects", async () => {
+    Object.defineProperty(navigator, "onLine", {
+      value: false,
+      configurable: true
+    });
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      transport: {
+        cacheBust: false
+      }
+    });
+    sdk.track("offline_action", { source: "offline-test" });
+    await sdk.flush();
+
+    expect(getPixelRequests()).toHaveLength(0);
+    expect(localStorage.getItem("__custom_sdk_offline_events__")).toContain("offline_action");
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      configurable: true
+    });
+    window.dispatchEvent(new Event("online"));
+    await sdk.flush();
+
+    const joined = getPixelRequests().map(decodeURIComponent).join("\n");
+    expect(joined).toContain("evt=offline_action");
+    expect(localStorage.getItem("__custom_sdk_offline_events__")).toBeNull();
+  });
+
   it("parses session profile and behavior path events for the admin report", () => {
     const hits = [
       {
@@ -740,5 +824,33 @@ describe("custom analytics sdk", () => {
     });
     expect(report.behaviorPaths[0].events).toHaveLength(2);
     expect(report.timeline.some((item) => item.action.includes("行为路径"))).toBe(true);
+  });
+
+  it("counts offline replayed events for the admin report", () => {
+    const report = parseHits([{
+      path: "/aly.gif",
+      raw: "http://localhost:4173/aly.gif?evt=offline_action",
+      received_at: 1717939203000,
+      ip: "127.0.0.1",
+      query: {
+        ti: "demo-web",
+        ver: "0.1.0",
+        evt: "offline_action",
+        et: "custom",
+        dm: "operation",
+        sid: "session_fixed",
+        vid: "visitor_fixed",
+        eid: "evt_replayed",
+        ts: "1717939203000",
+        p: "http://localhost:4173/index.html",
+        pp: "/index.html",
+        tl: "Home",
+        ep: JSON.stringify({
+          delivery_status: "offline_replayed"
+        })
+      }
+    }]);
+
+    expect(report.metrics.offlineReplayed).toBe(1);
   });
 });

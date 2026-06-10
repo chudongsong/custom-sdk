@@ -59,6 +59,9 @@ export interface TransportConfig {
   pixelEndpoint?: string;
   pixelMaxUrlLength?: number;
   cacheBust?: boolean;
+  retryCount?: number;
+  retryBaseDelay?: number;
+  offlineMaxEvents?: number;
 }
 
 export interface ReplayConfig {
