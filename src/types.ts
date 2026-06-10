@@ -89,9 +89,32 @@ export interface HeatmapConfig {
   chunkMaxLength?: number;
 }
 
+export interface LifecycleConfig {
+  heartbeat?: boolean;
+  heartbeatInterval?: number;
+  visibility?: boolean;
+  flushOnHidden?: boolean;
+  flushOnPagehide?: boolean;
+}
+
+export interface BehaviorConfig {
+  enabled?: boolean;
+  sampleRate?: number;
+  worker?: boolean;
+  click?: boolean;
+  scrollStop?: boolean;
+  hoverStay?: boolean;
+  scrollStopDelay?: number;
+  hoverThreshold?: number;
+  maxEvents?: number;
+  maxChunkLength?: number;
+  flushInterval?: number;
+}
+
 export interface FlushOptions {
   includeReplay?: boolean;
   includeHeatmap?: boolean;
+  includeBehavior?: boolean;
 }
 
 export interface SDKConfig {
@@ -109,6 +132,8 @@ export interface SDKConfig {
   modules?: Record<string, unknown>;
   replay?: ReplayConfig;
   heatmap?: HeatmapConfig;
+  lifecycle?: LifecycleConfig;
+  behavior?: BehaviorConfig;
   privacy?: {
     maskInput?: boolean;
     maskText?: boolean;

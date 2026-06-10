@@ -237,7 +237,7 @@ pre {
 
 .insights {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
   gap: 14px;
   margin-top: 14px;
 }
@@ -256,14 +256,45 @@ pre {
   border-radius: 2px;
 }
 
+.profile-list,
+.behavior-list,
 .replay-list {
   max-height: 240px;
   overflow: auto;
 }
 
+.profile-item,
+.behavior-item,
 .replay-item {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+}
+
+.profile-item strong,
+.behavior-item strong,
+.replay-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.profile-item span,
+.behavior-item span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.behavior-events {
+  margin-top: 8px;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.behavior-events li {
+  margin: 3px 0;
 }
 
 .empty {

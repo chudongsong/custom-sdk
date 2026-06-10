@@ -16,7 +16,11 @@ export function startMockServer({ port = 4173 } = {}) {
       hits.push({
         path: url.pathname,
         query: Object.fromEntries(url.searchParams.entries()),
-        raw: url.toString()
+        raw: url.toString(),
+        received_at: Date.now(),
+        ip: clientIp(req),
+        user_agent: req.headers["user-agent"] || "",
+        referer: req.headers.referer || ""
       });
       res.writeHead(200, {
         "content-type": "image/gif",
@@ -69,6 +73,13 @@ export function startMockServer({ port = 4173 } = {}) {
       });
     });
   });
+}
+
+function clientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (Array.isArray(forwarded)) return forwarded[0] || "";
+  if (typeof forwarded === "string" && forwarded) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress || "";
 }
 
 function staticFileCandidates(pathname) {

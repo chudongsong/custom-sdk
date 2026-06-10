@@ -116,6 +116,15 @@ try {
       form: true,
       api: true
     },
+    behavior: {
+      enabled: true,
+      worker: false,
+      click: true,
+      scrollStop: true,
+      hoverStay: true,
+      maxEvents: 20,
+      maxChunkLength: 1200
+    },
     replay: {
       enabled: true,
       sampleRate: 1,
@@ -167,13 +176,17 @@ try {
   await sdk.flush();
 
   const events = hits.map((hit) => hit.query.evt);
+  assert(events.includes("$session_start"), "session start pixel was not received");
   assert(events.includes("$pageview"), "pageview pixel was not received");
   assert(events.includes("$click"), "click pixel was not received");
+  assert(events.includes("$behavior_path"), "behavior path pixel was not received");
   assert(events.includes("$form_submit"), "form submit pixel was not received");
   assert(events.includes("$api"), "api pixel was not received");
   assert(events.includes("$conversion"), "conversion pixel was not received");
   assert(events.includes("$replay_chunk"), "replay chunk pixel was not received");
   assert(events.includes("$heatmap_click"), "heatmap pixel was not received");
+  assert(hits.some((hit) => hit.ip), "server should enrich hits with client ip");
+  assert(hits.some((hit) => hit.received_at), "server should enrich hits with receive time");
 
   const rawHits = hits.map((hit) => decodeURIComponent(hit.raw).replaceAll("+", " ")).join("\n");
   assert(rawHits.includes("link_count"), "manual trigger should include rich page counts");
@@ -184,13 +197,18 @@ try {
 
   const { parseHits } = await import("../admin/admin-parser.js");
   const report = parseHits(hits);
+  assert.equal(report.metrics.sessionStarts, 1, "admin parser should count session starts");
   assert.equal(report.metrics.pageviews, 1, "admin parser should count pageviews");
   assert(report.metrics.clicks >= 1, "admin parser should count clicks");
+  assert(report.metrics.behaviorPaths >= 1, "admin parser should count behavior paths");
   assert(report.metrics.forms >= 1, "admin parser should count form submits");
   assert(report.metrics.conversions >= 1, "admin parser should count conversions");
   assert(report.timeline.some((item) => item.action.includes("点击")), "admin parser should produce operation click actions");
+  assert(report.timeline.some((item) => item.action.includes("行为路径")), "admin parser should produce behavior path actions");
   assert(report.timeline.some((item) => item.action.includes("提交表单")), "admin parser should produce operation form actions");
   assert(report.sessions.length >= 1, "admin parser should group events into sessions");
+  assert(report.profiles.length >= 1, "admin parser should produce visitor profiles");
+  assert(report.behaviorPaths.length >= 1, "admin parser should produce behavior paths");
 
   console.log(`Rich examples smoke test passed with ${hits.length} aly.gif hits`);
 } finally {

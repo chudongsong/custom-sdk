@@ -3,10 +3,12 @@ import type { SDKDeps } from "./types";
 
 export type {
   CustomAnalyticsSDK,
+  BehaviorConfig,
   DeviceContext,
   EventDomain,
   EventType,
   HeatmapConfig,
+  LifecycleConfig,
   PageContext,
   ReplayConfig,
   SDKConfig,

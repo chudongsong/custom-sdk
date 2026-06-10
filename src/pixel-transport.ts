@@ -90,17 +90,23 @@ export class PixelTransport {
 
   private addEventProperties(params: URLSearchParams, event: SDKEvent) {
     const props = event.event_properties;
-    for (const key of ["replay_id", "heatmap_id", "seq", "enc", "data", "grid", "kind"] as const) {
+    for (const key of ["replay_id", "heatmap_id", "behavior_id", "seq", "enc", "data", "grid", "kind", "event_count", "start", "end"] as const) {
       const value = props[key];
       if (value !== undefined && value !== null) {
-        const paramName = key === "replay_id" ? "rid" : key === "heatmap_id" ? "hid" : key;
+        const paramName = key === "replay_id"
+          ? "rid"
+          : key === "heatmap_id"
+            ? "hid"
+            : key === "behavior_id"
+              ? "bid"
+              : key;
         params.set(paramName, String(value));
       }
     }
 
     const rest: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(props)) {
-      if (["replay_id", "heatmap_id", "seq", "enc", "data", "grid", "kind"].includes(key)) continue;
+      if (["replay_id", "heatmap_id", "behavior_id", "seq", "enc", "data", "grid", "kind", "event_count", "start", "end"].includes(key)) continue;
       rest[key] = value;
     }
     if (Object.keys(rest).length) {

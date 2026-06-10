@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSDK } from "../src";
 import { getPixelRequests } from "./setup";
+import { parseHits } from "../examples/admin/admin-parser";
 
 describe("custom analytics sdk", () => {
   it("sends pageview through aly.gif pixel request with masked url", async () => {
@@ -19,7 +20,8 @@ describe("custom analytics sdk", () => {
 
     await sdk.flush();
 
-    const [url] = getPixelRequests();
+    const url = getPixelRequests().find((request) => decodeURIComponent(request).includes("evt=$pageview"));
+    expect(url).toBeTruthy();
     expect(url).toContain("https://analytics.example.com/aly.gif?");
     expect(url).toContain("evt=%24pageview");
     expect(url).toContain("dm=operation");
@@ -165,7 +167,7 @@ describe("custom analytics sdk", () => {
     expect(joined).toContain("[masked]");
   });
 
-  it("only sends pageview on initial flush even when replay and heatmap are enabled", async () => {
+  it("sends only session start and pageview on initial flush even when replay and heatmap are enabled", async () => {
     document.body.innerHTML = `<input id="password" value="secret-value" /><button data-track-id="buy">Buy</button>`;
 
     const sdk = createSDK({
@@ -198,7 +200,134 @@ describe("custom analytics sdk", () => {
 
     const events = getPixelRequests()
       .map((url) => new URL(url, "http://localhost:3000").searchParams.get("evt"));
-    expect(events).toEqual(["$pageview"]);
+    expect(events).toEqual(["$session_start", "$pageview"]);
+  });
+
+  it("emits session start with source, visit time, device type, and explicit user id", async () => {
+    Object.defineProperty(document, "referrer", {
+      value: "https://google.example/search?q=custom-sdk&token=secret",
+      configurable: true
+    });
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.login("user_1001");
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif"
+    });
+
+    await sdk.flush();
+
+    const sessionStart = getPixelRequests()
+      .map((url) => decodeURIComponent(url).replaceAll("+", " "))
+      .find((url) => url.includes("evt=$session_start"));
+    expect(sessionStart).toBeTruthy();
+    expect(sessionStart).toContain("uid=user_1001");
+    expect(sessionStart).toContain("sid=session_fixed");
+    expect(sessionStart).toContain("vid=visitor_fixed");
+    expect(sessionStart).toContain("\"visit_time\":1717939200000");
+    expect(sessionStart).toContain("\"source\":\"https://google.example/search?q=custom-sdk&token=[masked]\"");
+    expect(sessionStart).toContain("\"device_type\":\"desktop\"");
+    expect(sessionStart).not.toContain("token=secret");
+  });
+
+  it("tracks heartbeat and visibility changes for the session lifecycle", async () => {
+    vi.useFakeTimers();
+    let now = 1717939200000;
+    const sdk = createSDK({
+      now: () => now,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      lifecycle: {
+        heartbeat: true,
+        heartbeatInterval: 1000,
+        visibility: true
+      }
+    });
+
+    now += 1000;
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await sdk.flush();
+
+    const joined = getPixelRequests().map(decodeURIComponent).join("\n");
+    expect(joined).toContain("evt=$heartbeat");
+    expect(joined).toContain("\"active_time\":1000");
+    expect(joined).toContain("evt=$visibility_change");
+    expect(joined).toContain("\"visibility_state\":\"hidden\"");
+    expect(joined).toContain("\"duration\":1000");
+  });
+
+  it("aggregates click, scroll stop, and hover stay into behavior path json before pixel upload", async () => {
+    vi.useFakeTimers();
+    let now = 1717939200000;
+    document.body.innerHTML = `
+      <main>
+        <a id="buy" data-track-id="buy-now" href="/checkout?token=secret">Buy secret@example.com</a>
+      </main>
+    `;
+
+    const sdk = createSDK({
+      now: () => now,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      plugins: {
+        click: true
+      },
+      behavior: {
+        enabled: true,
+        worker: false,
+        scrollStop: true,
+        hoverStay: true,
+        click: true,
+        scrollStopDelay: 200,
+        hoverThreshold: 500,
+        maxEvents: 20,
+        maxChunkLength: 1200
+      }
+    });
+
+    window.dispatchEvent(new Event("scroll"));
+    now += 200;
+    vi.advanceTimersByTime(200);
+
+    const link = document.querySelector("a");
+    link?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 10, clientY: 20 }));
+    now += 600;
+    vi.advanceTimersByTime(600);
+    link?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, clientX: 10, clientY: 20 }));
+    link?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 30, clientY: 40 }));
+
+    await sdk.flush();
+
+    const behaviorUrl = getPixelRequests()
+      .map((url) => decodeURIComponent(url).replaceAll("+", " "))
+      .find((url) => url.includes("evt=$behavior_path"));
+    expect(behaviorUrl).toBeTruthy();
+    expect(behaviorUrl).toContain("kind=behavior_path");
+    expect(behaviorUrl).toContain("\"type\":\"scroll_stop\"");
+    expect(behaviorUrl).toContain("\"type\":\"hover_stay\"");
+    expect(behaviorUrl).toContain("\"type\":\"click\"");
+    expect(behaviorUrl).toContain("\"selector\":\"[data-track-id=\\\"buy-now\\\"]\"");
+    expect(behaviorUrl).not.toContain("secret@example.com");
+    expect(behaviorUrl).not.toContain("token=secret");
   });
 
   it("aggregates heatmap clicks before pixel upload", async () => {
@@ -530,5 +659,86 @@ describe("custom analytics sdk", () => {
     expect(joined).not.toContain("huge_event");
     expect(joined).toContain("evt=$sdk_diagnostic");
     expect(joined).toContain("url_length_exceeded");
+  });
+
+  it("parses session profile and behavior path events for the admin report", () => {
+    const hits = [
+      {
+        path: "/aly.gif",
+        raw: "http://localhost:4173/aly.gif?evt=$session_start",
+        received_at: 1717939200100,
+        ip: "127.0.0.1",
+        query: {
+          ti: "demo-web",
+          ver: "0.1.0",
+          evt: "$session_start",
+          et: "behavior",
+          dm: "operation",
+          sid: "session_fixed",
+          vid: "visitor_fixed",
+          eid: "evt_session",
+          ts: "1717939200000",
+          p: "http://localhost:4173/index.html",
+          pp: "/index.html",
+          tl: "Home",
+          sw: "1440",
+          sh: "900",
+          vw: "1280",
+          vh: "720",
+          lg: "zh-CN",
+          ep: JSON.stringify({
+            visit_time: 1717939200000,
+            source: "direct",
+            device_type: "desktop"
+          })
+        }
+      },
+      {
+        path: "/aly.gif",
+        raw: "http://localhost:4173/aly.gif?evt=$behavior_path",
+        received_at: 1717939202000,
+        ip: "127.0.0.1",
+        query: {
+          ti: "demo-web",
+          ver: "0.1.0",
+          evt: "$behavior_path",
+          et: "behavior",
+          dm: "operation",
+          sid: "session_fixed",
+          vid: "visitor_fixed",
+          eid: "evt_behavior",
+          ts: "1717939202000",
+          p: "http://localhost:4173/index.html",
+          pp: "/index.html",
+          tl: "Home",
+          kind: "behavior_path",
+          seq: "1",
+          enc: "json",
+          data: JSON.stringify({
+            session_id: "session_fixed",
+            page: "/index.html",
+            start: 1717939200000,
+            end: 1717939202000,
+            events: [
+              { t: 200, type: "scroll_stop", y: 320 },
+              { t: 800, type: "click", selector: "a#buy" }
+            ]
+          })
+        }
+      }
+    ];
+
+    const report = parseHits(hits);
+
+    expect(report.metrics.sessionStarts).toBe(1);
+    expect(report.metrics.behaviorPaths).toBe(1);
+    expect(report.profiles[0]).toMatchObject({
+      visitorId: "visitor_fixed",
+      sessionId: "session_fixed",
+      ip: "127.0.0.1",
+      deviceType: "desktop"
+    });
+    expect(report.behaviorPaths[0].events).toHaveLength(2);
+    expect(report.timeline.some((item) => item.action.includes("行为路径"))).toBe(true);
   });
 });

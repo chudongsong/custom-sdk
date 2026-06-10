@@ -27,6 +27,25 @@ sdk.init({
     api: true,
     error: true
   },
+  flushInterval: 5000,
+  lifecycle: {
+    heartbeat: true,
+    heartbeatInterval: 15000,
+    visibility: true,
+    flushOnHidden: true
+  },
+  behavior: {
+    enabled: true,
+    worker: true,
+    click: true,
+    scrollStop: true,
+    hoverStay: true,
+    scrollStopDelay: 300,
+    hoverThreshold: 800,
+    maxEvents: 80,
+    maxChunkLength: 1200,
+    flushInterval: 5000
+  },
   replay: {
     enabled: true,
     sampleRate: 1,
