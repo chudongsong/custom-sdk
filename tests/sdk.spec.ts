@@ -710,6 +710,35 @@ describe("custom analytics sdk", () => {
     expect(requests.join("\n")).toContain("evt=$pageview");
   });
 
+  it("attaches stable batch id and dedupe key to pixel uploads", async () => {
+    failNextPixelRequests(1);
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      transport: {
+        cacheBust: false,
+        retryCount: 1,
+        retryBaseDelay: 0
+      }
+    });
+
+    await sdk.flush();
+
+    const urls = getPixelRequests().map((request) => new URL(request, "http://localhost"));
+    const sessionAttempts = urls.filter((url) => url.searchParams.get("evt") === "$session_start");
+    expect(sessionAttempts).toHaveLength(2);
+    expect(sessionAttempts[0].searchParams.get("baid")).toBe("batch_fixed");
+    expect(sessionAttempts[1].searchParams.get("baid")).toBe("batch_fixed");
+    expect(sessionAttempts[0].searchParams.get("dk")).toBe("demo-web:$session_start:evt_fixed");
+    expect(sessionAttempts[1].searchParams.get("dk")).toBe("demo-web:$session_start:evt_fixed");
+    expect(urls.some((url) => url.searchParams.get("evt") === "$pageview" && url.searchParams.get("baid") === "batch_fixed")).toBe(true);
+  });
+
   it("persists offline events and replays them after the browser reconnects", async () => {
     Object.defineProperty(navigator, "onLine", {
       value: false,
@@ -852,5 +881,15 @@ describe("custom analytics sdk", () => {
     }]);
 
     expect(report.metrics.offlineReplayed).toBe(1);
+  });
+
+  it("counts server dropped duplicates for the admin report", () => {
+    const report = parseHits([], {
+      duplicates: 2,
+      unique_keys: 4
+    });
+
+    expect(report.metrics.serverDuplicates).toBe(2);
+    expect(report.metrics.uniqueDedupeKeys).toBe(4);
   });
 });

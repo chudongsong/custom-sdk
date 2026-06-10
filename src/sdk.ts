@@ -125,8 +125,9 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     const events = [...this.queue];
     this.queue = [];
     const failed: SDKEvent[] = [];
+    const batchId = this.randomId("batch");
     for (const event of events) {
-      const result = await this.sendWithRetry(event);
+      const result = await this.sendWithRetry(event, batchId);
       if (result.tooLong) {
         if (event.event !== "$sdk_diagnostic") {
           await this.emitDiagnostic("url_length_exceeded");
@@ -225,13 +226,14 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     }
   }
 
-  private async sendWithRetry(event: SDKEvent): Promise<{ ok: boolean; tooLong: boolean }> {
+  private async sendWithRetry(event: SDKEvent, batchId: string): Promise<{ ok: boolean; tooLong: boolean }> {
     if (!this.transport) return { ok: false, tooLong: false };
     const retryCount = Math.max(0, this.config?.transport?.retryCount ?? 0);
     const baseDelay = Math.max(0, this.config?.transport?.retryBaseDelay ?? 300);
+    const dedupeKey = `${event.app_id}:${event.event}:${event.event_id}`;
 
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-      const result = this.transport.createUrl(event);
+      const result = this.transport.createUrl(event, false, { batchId, dedupeKey });
       if (result.tooLong) return { ok: false, tooLong: true };
       const ok = await this.transport.send(result.url);
       if (ok) return { ok: true, tooLong: false };

@@ -99,6 +99,9 @@ GET /aly.gif?ti=demo-web&ver=1.0.0&evt=pageLoad&sid=session_xxx&vid=visitor_xxx&
 | `vw` | 视口宽度。 | `1280` |
 | `vh` | 视口高度。 | `720` |
 | `rn` | 随机数，防缓存。 | `175454` |
+| `eid` | 事件 ID。 | `evt_xxx` |
+| `baid` | 批次 ID，同一次 `flush()` 中的事件共享。 | `batch_xxx` |
+| `dk` | 服务端幂等去重键。 | `demo-web:$pageview:evt_xxx` |
 | `ts` | 事件时间戳。 | `1717939200000` |
 | `rid` | 录屏 ID，仅录屏事件使用。 | `replay_xxx` |
 | `seq` | 分片序号，仅分片事件使用。 | `1` |

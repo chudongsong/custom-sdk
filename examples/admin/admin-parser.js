@@ -18,7 +18,7 @@ const EVENT_LABELS = {
   "$heatmap_click": "热力图聚合"
 };
 
-export function parseHits(hits = []) {
+export function parseHits(hits = [], stats = {}) {
   const events = hits.map(parseHit).filter(Boolean).sort((a, b) => a.timestamp - b.timestamp);
   const operationEvents = events.filter((event) => event.domain === "operation");
   const developerEvents = events.filter((event) => event.domain === "developer");
@@ -40,6 +40,8 @@ export function parseHits(hits = []) {
       visibilityChanges: count(events, "$visibility_change"),
       behaviorPaths: count(events, "$behavior_path"),
       offlineReplayed: events.filter((event) => event.eventProperties.delivery_status === "offline_replayed").length,
+      serverDuplicates: Number(stats.duplicates || 0),
+      uniqueDedupeKeys: Number(stats.unique_keys || 0),
       api: count(events, "$api"),
       errors: events.filter((event) => event.type === "error").length,
       replayChunks: count(events, "$replay_chunk"),

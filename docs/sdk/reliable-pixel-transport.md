@@ -22,6 +22,7 @@ GET /aly.gif?...
 | 离线缓存 | 优先 IndexedDB，浏览器不支持时回退到 `localStorage`。 |
 | 网络恢复 | 监听 `online` 事件，恢复后自动 `flush()` 补发。 |
 | 补发可见性 | 离线恢复事件会带 `delivery_status=offline_replayed`，后台统计“离线补发”。 |
+| 幂等去重 | 每条像素请求带 `baid` 和 `dk`，服务端按 `dk` 去重。 |
 
 ## 3. 配置示例
 
@@ -53,7 +54,8 @@ flowchart TD
   E -->|是| F["写入 OfflineEventStore"]
   E -->|否| G["读取离线缓存并合并队列"]
   G --> H["PixelTransport.createUrl"]
-  H --> I{"URL 超长?"}
+  H --> H2["附加 baid / dk"]
+  H2 --> I{"URL 超长?"}
   I -->|是| J["丢弃并发送 sdk_diagnostic"]
   I -->|否| K["Image GET /aly.gif"]
   K --> L{"成功?"}
