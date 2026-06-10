@@ -14,6 +14,10 @@ const nodes = {
   timeline: document.querySelector("#timeline"),
   detail: document.querySelector("#detail"),
   selectedEvent: document.querySelector("#selectedEvent"),
+  profiles: document.querySelector("#profiles"),
+  profileCount: document.querySelector("#profileCount"),
+  behaviorPaths: document.querySelector("#behaviorPaths"),
+  behaviorPathCount: document.querySelector("#behaviorPathCount"),
   heatmap: document.querySelector("#heatmap"),
   heatmapTotal: document.querySelector("#heatmapTotal"),
   replayList: document.querySelector("#replayList"),
@@ -43,6 +47,8 @@ function render() {
   renderMetrics();
   renderSessions();
   renderTimeline();
+  renderProfiles();
+  renderBehaviorPaths();
   renderHeatmap();
   renderReplay();
 }
@@ -57,6 +63,7 @@ function renderMetrics() {
     ["点击", metrics.clicks],
     ["表单", metrics.forms],
     ["转化", metrics.conversions],
+    ["行为路径", metrics.behaviorPaths],
     ["异常", metrics.errors]
   ];
 
@@ -135,6 +142,47 @@ function renderTimeline() {
   }
 }
 
+function renderProfiles() {
+  const profiles = state.report.profiles;
+  nodes.profileCount.textContent = String(profiles.length);
+
+  if (!profiles.length) {
+    nodes.profiles.replaceChildren(emptyNode());
+    return;
+  }
+
+  nodes.profiles.innerHTML = profiles.map((profile) => `
+    <div class="profile-item">
+      <strong>${escapeHtml(shortId(profile.visitorId))}</strong>
+      <span>会话 ${escapeHtml(shortId(profile.sessionId))} · ${escapeHtml(profile.deviceType || "-")} · ${escapeHtml(profile.device.language || "-")}</span>
+      <span>来源 ${escapeHtml(profile.source || "direct")} · IP ${escapeHtml(profile.ip || "-")}</span>
+      <span>${escapeHtml(profile.page.path || profile.page.url || "-")}</span>
+    </div>
+  `).join("");
+}
+
+function renderBehaviorPaths() {
+  const paths = state.report.behaviorPaths;
+  nodes.behaviorPathCount.textContent = String(paths.length);
+
+  if (!paths.length) {
+    nodes.behaviorPaths.replaceChildren(emptyNode());
+    return;
+  }
+
+  nodes.behaviorPaths.innerHTML = paths.map((path) => `
+    <div class="behavior-item">
+      <strong>${escapeHtml(path.page || "-")} · ${path.eventCount} 个动作</strong>
+      <span>会话 ${escapeHtml(shortId(path.sessionId))} · ${formatDuration(path.end - path.start)}</span>
+      <ol class="behavior-events">
+        ${path.events.slice(0, 5).map((event) => `
+          <li>${escapeHtml(describeBehaviorEvent(event))}</li>
+        `).join("")}
+      </ol>
+    </div>
+  `).join("");
+}
+
 function renderHeatmap() {
   const heatmap = state.report.heatmap;
   nodes.heatmapTotal.textContent = `${heatmap.total} 次`;
@@ -181,6 +229,21 @@ function formatDuration(ms) {
   if (!Number.isFinite(ms) || ms <= 0) return "0 秒";
   if (ms < 1000) return `${ms} 毫秒`;
   return `${Math.round(ms / 1000)} 秒`;
+}
+
+function describeBehaviorEvent(event) {
+  switch (event.type) {
+    case "click":
+      return `点击 ${event.selector || event.text || "元素"}`;
+    case "scroll_stop":
+      return `滚动停留 y=${event.scroll_y ?? event.y ?? 0}`;
+    case "hover_stay":
+      return `鼠标停留 ${event.selector || event.text || "元素"} ${formatDuration(Number(event.stay || 0))}`;
+    case "form_submit":
+      return `提交表单 ${event.selector || ""}`;
+    default:
+      return event.type || "未知动作";
+  }
 }
 
 function escapeHtml(value = "") {

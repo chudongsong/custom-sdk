@@ -1,6 +1,8 @@
+import { BehaviorPathPipeline } from "./behavior-path";
 import { HeatmapAggregator } from "./heatmap";
 import { getSensitiveKeys, maskRecord, maskString, maskUrl, truncate } from "./privacy";
 import { PixelTransport } from "./pixel-transport";
+import type { BehaviorPathEvent } from "./behavior-path";
 import type { ReplayChunk, ReplayRecorderLike } from "./replay";
 import type { CustomAnalyticsSDK, DeviceContext, EventDomain, EventType, FlushOptions, PageContext, SDKConfig, SDKDeps, SDKEvent } from "./types";
 
@@ -17,11 +19,17 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
   private transport?: PixelTransport;
   private replay?: ReplayRecorderLike;
   private heatmap?: HeatmapAggregator;
+  private behavior?: BehaviorPathPipeline;
   private pageStart = 0;
   private lastPageUrl = "";
   private cleanupFns: Array<() => void> = [];
   private replayStartSent = false;
   private replayLoadToken = 0;
+  private sessionStartedAt = 0;
+  private lastActiveAt = 0;
+  private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private autoFlushTimer: ReturnType<typeof setInterval> | undefined;
+  private flushInFlight?: Promise<void>;
 
   constructor(private readonly deps: SDKDeps = {}) {}
 
@@ -36,17 +44,22 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     this.sessionId = this.loadOrCreateId("__custom_sdk_session_id__", "session");
     this.transport = new PixelTransport(config.endpoint, config.transport);
     this.pageStart = this.now();
+    this.sessionStartedAt = this.pageStart;
+    this.lastActiveAt = this.pageStart;
     this.lastPageUrl = window.location.href;
 
     if (!this.consent) return;
 
-    this.setupLifecycle();
+    this.setupLifecycle(config);
     this.setupClick(config);
     this.setupForm(config);
     this.setupErrorMonitoring(config);
     this.setupApiMonitoring(config);
     this.setupReplay(config);
     this.setupHeatmap(config);
+    this.setupBehaviorPath(config);
+    this.setupAutoFlush(config);
+    this.emitSessionStart();
     this.emit("$pageview", "operation", "behavior", { navigation_type: "init" });
   }
 
@@ -85,7 +98,16 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
   }
 
   async flush(options: FlushOptions = {}): Promise<void> {
+    if (this.flushInFlight) return this.flushInFlight;
+    this.flushInFlight = this.flushInternal(options).finally(() => {
+      this.flushInFlight = undefined;
+    });
+    return this.flushInFlight;
+  }
+
+  private async flushInternal(options: FlushOptions = {}): Promise<void> {
     if (!this.consent || !this.transport) return;
+    if (options.includeBehavior !== false) await this.flushBehaviorPath();
     if (options.includeReplay !== false) this.flushReplay();
     if (options.includeHeatmap !== false) this.flushHeatmap();
 
@@ -117,14 +139,20 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     }
     this.replay?.stop({ recordEnd: emitLeave });
     this.heatmap?.stop();
+    this.behavior?.stop();
     this.transport?.dispose();
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.autoFlushTimer) clearInterval(this.autoFlushTimer);
     this.cleanupFns.forEach((cleanup) => cleanup());
     this.cleanupFns = [];
     this.replay = undefined;
     this.heatmap = undefined;
+    this.behavior = undefined;
     this.transport = undefined;
     this.replayStartSent = false;
     this.replayLoadToken += 1;
+    this.heartbeatTimer = undefined;
+    this.autoFlushTimer = undefined;
     if (!emitLeave) {
       this.queue = [];
     }
@@ -150,6 +178,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       event_properties: maskRecord(properties, sensitiveKeys) as Record<string, unknown>
     };
 
+    this.lastActiveAt = sdkEvent.time;
     const finalEvent = this.runBeforeSend(sdkEvent);
     if (finalEvent === false) return;
     this.queue.push(finalEvent);
@@ -203,7 +232,19 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     this.heatmap.start();
   }
 
-  private setupLifecycle() {
+  private emitSessionStart() {
+    const sensitiveKeys = getSensitiveKeys(this.config?.privacy?.sensitiveKeys);
+    this.emit("$session_start", "operation", "behavior", {
+      visit_time: this.sessionStartedAt,
+      source: document.referrer ? maskUrl(document.referrer, sensitiveKeys) : "direct",
+      landing_url: maskUrl(window.location.href, sensitiveKeys),
+      device_type: deviceType(),
+      online_started_at: this.sessionStartedAt,
+      active_time: 0
+    });
+  }
+
+  private setupLifecycle(config: SDKConfig) {
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
 
@@ -224,8 +265,26 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       this.emitPageLeave("pagehide");
       void this.flush();
     };
+    const visibilitychange = () => {
+      this.emit("$visibility_change", "operation", "behavior", {
+        visibility_state: document.visibilityState,
+        duration: this.sessionDuration(),
+        active_time: this.activeTime(),
+        last_active_at: this.lastActiveAt
+      });
+      if (document.visibilityState === "hidden" && config.lifecycle?.flushOnHidden !== false) {
+        void this.flush();
+      }
+    };
     window.addEventListener("popstate", popstate);
     window.addEventListener("pagehide", pagehide);
+    if (config.lifecycle?.visibility) {
+      document.addEventListener("visibilitychange", visibilitychange);
+    }
+    if (config.lifecycle?.heartbeat) {
+      const interval = Math.max(1000, config.lifecycle.heartbeatInterval ?? 15000);
+      this.heartbeatTimer = setInterval(() => this.emitHeartbeat(), interval);
+    }
 
     this.cleanupFns.push(
       () => {
@@ -233,8 +292,26 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
         history.replaceState = originalReplaceState as History["replaceState"];
       },
       () => window.removeEventListener("popstate", popstate),
-      () => window.removeEventListener("pagehide", pagehide)
+      () => window.removeEventListener("pagehide", pagehide),
+      () => document.removeEventListener("visibilitychange", visibilitychange)
     );
+  }
+
+  private setupAutoFlush(config: SDKConfig) {
+    const interval = config.flushInterval ?? config.behavior?.flushInterval;
+    if (!interval || interval <= 0) return;
+    this.autoFlushTimer = setInterval(() => {
+      void this.flush();
+    }, interval);
+  }
+
+  private emitHeartbeat() {
+    this.emit("$heartbeat", "operation", "behavior", {
+      duration: this.sessionDuration(),
+      active_time: this.activeTime(),
+      last_active_at: this.lastActiveAt,
+      visibility_state: document.visibilityState
+    });
   }
 
   private setupClick(config: SDKConfig) {
@@ -323,6 +400,97 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     };
     document.addEventListener("submit", submit, true);
     this.cleanupFns.push(() => document.removeEventListener("submit", submit, true));
+  }
+
+  private setupBehaviorPath(config: SDKConfig) {
+    if (!config.behavior?.enabled || !this.sample(config.behavior.sampleRate ?? 1)) return;
+    this.behavior = new BehaviorPathPipeline(this.randomId("bp"), config.behavior);
+    const behaviorConfig = config.behavior;
+    const sensitiveKeys = getSensitiveKeys(config.privacy?.sensitiveKeys);
+    let scrollTimer = 0;
+    let hoverTarget: { element: HTMLElement; start: number; x: number; y: number } | undefined;
+
+    if (behaviorConfig.click !== false) {
+      const click = (event: MouseEvent) => {
+        const element = event.target instanceof Element
+          ? event.target.closest(INTERACTIVE_SELECTOR)
+          : null;
+        if (!(element instanceof HTMLElement)) return;
+        this.recordBehavior({
+          type: "click",
+          time: this.now(),
+          ...this.behaviorTarget(element, sensitiveKeys),
+          x: event.clientX,
+          y: event.clientY,
+          page_x: event.pageX,
+          page_y: event.pageY,
+          scroll_x: window.scrollX,
+          scroll_y: window.scrollY
+        });
+      };
+      document.addEventListener("click", click, true);
+      this.cleanupFns.push(() => document.removeEventListener("click", click, true));
+    }
+
+    if (behaviorConfig.scrollStop !== false) {
+      const scroll = () => {
+        window.clearTimeout(scrollTimer);
+        scrollTimer = window.setTimeout(() => {
+          const scrollHeight = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+          this.recordBehavior({
+            type: "scroll_stop",
+            time: this.now(),
+            y: window.scrollY,
+            scroll_y: window.scrollY,
+            scroll_x: window.scrollX,
+            stay: 0,
+            page_y: Math.round((window.scrollY / scrollHeight) * 10000) / 100
+          });
+        }, behaviorConfig.scrollStopDelay ?? 300);
+      };
+      window.addEventListener("scroll", scroll, true);
+      this.cleanupFns.push(
+        () => window.removeEventListener("scroll", scroll, true),
+        () => window.clearTimeout(scrollTimer)
+      );
+    }
+
+    if (behaviorConfig.hoverStay !== false) {
+      const threshold = behaviorConfig.hoverThreshold ?? 800;
+      const mouseover = (event: MouseEvent) => {
+        const element = event.target instanceof Element
+          ? event.target.closest(INTERACTIVE_SELECTOR)
+          : null;
+        if (!(element instanceof HTMLElement)) return;
+        hoverTarget = {
+          element,
+          start: this.now(),
+          x: event.clientX,
+          y: event.clientY
+        };
+      };
+      const mouseout = (event: MouseEvent) => {
+        if (!hoverTarget) return;
+        const target = hoverTarget;
+        hoverTarget = undefined;
+        const stay = this.now() - target.start;
+        if (stay < threshold) return;
+        this.recordBehavior({
+          type: "hover_stay",
+          time: this.now(),
+          ...this.behaviorTarget(target.element, sensitiveKeys),
+          x: target.x,
+          y: target.y,
+          stay
+        });
+      };
+      document.addEventListener("mouseover", mouseover, true);
+      document.addEventListener("mouseout", mouseout, true);
+      this.cleanupFns.push(
+        () => document.removeEventListener("mouseover", mouseover, true),
+        () => document.removeEventListener("mouseout", mouseout, true)
+      );
+    }
   }
 
   private setupErrorMonitoring(config: SDKConfig) {
@@ -498,8 +666,38 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     }
   }
 
+  private async flushBehaviorPath() {
+    if (!this.behavior) return;
+    const page = this.getPageContext(getSensitiveKeys(this.config?.privacy?.sensitiveKeys));
+    const chunks = await this.behavior.drain({
+      sessionId: this.sessionId,
+      page: page.path || page.url,
+      title: page.title
+    }, this.now());
+    for (const chunk of chunks) {
+      this.emit("$behavior_path", "operation", "behavior", chunk);
+    }
+  }
+
   private emitReplayChunk(chunk: ReplayChunk) {
     this.emit("$replay_chunk", "operation", "replay", chunk);
+  }
+
+  private recordBehavior(event: BehaviorPathEvent) {
+    if (!this.behavior) return;
+    this.lastActiveAt = event.time;
+    this.behavior.record(maskRecord(event, getSensitiveKeys(this.config?.privacy?.sensitiveKeys)) as BehaviorPathEvent);
+  }
+
+  private behaviorTarget(element: HTMLElement, sensitiveKeys: string[]) {
+    const text = element instanceof HTMLInputElement
+      ? ""
+      : truncate(maskString((element.textContent || "").trim(), sensitiveKeys), 120);
+    return {
+      selector: describeTrackTarget(element),
+      text,
+      tag: element.tagName.toLowerCase()
+    };
   }
 
   private getPageContext(sensitiveKeys: string[]): PageContext {
@@ -561,6 +759,14 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
     if (this.deps.randomId) return this.deps.randomId(prefix);
     if (crypto.randomUUID) return `${prefix}_${crypto.randomUUID()}`;
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+
+  private sessionDuration() {
+    return Math.max(0, this.now() - this.sessionStartedAt);
+  }
+
+  private activeTime() {
+    return this.sessionDuration();
   }
 }
 
@@ -674,4 +880,12 @@ function fieldTypeOf(element: Element) {
   if (element instanceof HTMLTextAreaElement) return "textarea";
   if (element instanceof HTMLSelectElement) return element.multiple ? "select-multiple" : "select";
   return element.tagName.toLowerCase();
+}
+
+function deviceType() {
+  const ua = navigator.userAgent.toLowerCase();
+  const width = window.innerWidth || document.documentElement.clientWidth || screen.width || 0;
+  if (/ipad|tablet/.test(ua) || (width >= 768 && width < 1024 && /mobile/.test(ua))) return "tablet";
+  if (/mobi|iphone|android/.test(ua) || width < 768) return "mobile";
+  return "desktop";
 }

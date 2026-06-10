@@ -4,6 +4,10 @@ const EVENT_LABELS = {
   "$click": "点击元素",
   "$form_submit": "提交表单",
   "$conversion": "完成转化",
+  "$session_start": "会话开始",
+  "$heartbeat": "在线心跳",
+  "$visibility_change": "页面可见性",
+  "$behavior_path": "行为路径",
   "$api": "接口请求",
   "$js_error": "JS 异常",
   "$promise_error": "Promise 异常",
@@ -31,14 +35,20 @@ export function parseHits(hits = []) {
       clicks: count(events, "$click"),
       forms: count(events, "$form_submit"),
       conversions: count(events, "$conversion"),
+      sessionStarts: count(events, "$session_start"),
+      heartbeats: count(events, "$heartbeat"),
+      visibilityChanges: count(events, "$visibility_change"),
+      behaviorPaths: count(events, "$behavior_path"),
       api: count(events, "$api"),
       errors: events.filter((event) => event.type === "error").length,
       replayChunks: count(events, "$replay_chunk"),
       heatmapEvents: events.filter((event) => event.event.startsWith("$heatmap")).length
     },
     sessions,
+    profiles: buildProfiles(events),
     timeline: events.map(toTimelineItem),
     heatmap: buildHeatmap(events),
+    behaviorPaths: buildBehaviorPaths(events),
     replay: events
       .filter((event) => event.event === "$replay_chunk")
       .map((event) => ({
@@ -73,6 +83,10 @@ export function parseHit(hit) {
     visitorId: query.vid || "",
     userId: query.uid || "",
     eventId: query.eid || "",
+    receivedAt: hit.received_at || 0,
+    ip: hit.ip || "",
+    userAgent: hit.user_agent || "",
+    referer: hit.referer || "",
     page: {
       url: query.p || "",
       path: query.pp || safePath(query.p),
@@ -167,6 +181,16 @@ function describeAction(event, props) {
       return `提交表单 ${props.form_name || props.form_id || props.selector || ""}，字段 ${props.field_count || 0} 个`;
     case "$conversion":
       return `完成转化 ${props.conversion_id || ""}${props.amount ? `，金额 ${props.amount}` : ""}`;
+    case "$session_start":
+      return `会话开始，来源 ${props.source || "direct"}，设备 ${props.device_type || "-"}`;
+    case "$heartbeat":
+      return `在线心跳，活跃 ${formatDuration(Number(props.active_time || 0))}`;
+    case "$visibility_change":
+      return `页面${props.visibility_state === "hidden" ? "隐藏" : "恢复"}，停留 ${formatDuration(Number(props.duration || 0))}`;
+    case "$behavior_path": {
+      const data = typeof event.data === "object" ? event.data : safeJson(event.query.data);
+      return `行为路径，${Array.isArray(data.events) ? data.events.length : 0} 个动作`;
+    }
     case "$api":
       return `请求接口 ${props.method || "GET"} ${props.path || props.url || ""}，状态 ${props.status ?? "-"}`;
     case "$js_error":
@@ -180,6 +204,43 @@ function describeAction(event, props) {
     default:
       return EVENT_LABELS[event.event] || event.event;
   }
+}
+
+function buildProfiles(events) {
+  return events
+    .filter((event) => event.event === "$session_start")
+    .map((event) => ({
+      visitorId: event.visitorId,
+      sessionId: event.sessionId,
+      userId: event.userId,
+      ip: event.ip,
+      source: event.eventProperties.source || "direct",
+      visitTime: event.eventProperties.visit_time || event.timestamp,
+      deviceType: event.eventProperties.device_type || "",
+      onlineStartedAt: event.eventProperties.online_started_at || event.timestamp,
+      page: event.page,
+      device: event.device,
+      receivedAt: event.receivedAt
+    }));
+}
+
+function buildBehaviorPaths(events) {
+  return events
+    .filter((event) => event.event === "$behavior_path")
+    .map((event) => {
+      const data = typeof event.data === "object" ? event.data : safeJson(event.query.data);
+      return {
+        id: event.eventId,
+        sessionId: event.sessionId,
+        visitorId: event.visitorId,
+        page: data.page || event.page.path || event.page.url,
+        start: Number(data.start || event.query.start || event.timestamp),
+        end: Number(data.end || event.query.end || event.timestamp),
+        eventCount: Array.isArray(data.events) ? data.events.length : Number(event.query.event_count || 0),
+        events: Array.isArray(data.events) ? data.events : [],
+        raw: event
+      };
+    });
 }
 
 function buildHeatmap(events) {
