@@ -30,6 +30,13 @@ try {
   const adminScript = await fetch(`${url}/admin/admin.js`);
   assert.equal(adminScript.status, 200, "admin dashboard script should be served");
 
+  const duplicateUrl = `${url}/aly.gif?ti=dedupe-demo&evt=manual&eid=evt_same&sid=session_same&vid=visitor_same&dk=dedupe-demo%3Aevt_same&baid=batch_same`;
+  await fetch(duplicateUrl);
+  await fetch(duplicateUrl);
+  const statsAfterDuplicate = await (await fetch(`${url}/__stats`)).json();
+  assert.equal(hits.filter((hit) => hit.query.dk === "dedupe-demo:evt_same").length, 1, "server should store only one duplicate-key hit");
+  assert.equal(statsAfterDuplicate.duplicates, 1, "server should count duplicate dropped hits");
+
   const dom = new JSDOM(html, {
     url: `${url}/index.html?token=secret`,
     pretendToBeVisual: true
@@ -185,6 +192,8 @@ try {
   assert(events.includes("$conversion"), "conversion pixel was not received");
   assert(events.includes("$replay_chunk"), "replay chunk pixel was not received");
   assert(events.includes("$heatmap_click"), "heatmap pixel was not received");
+  assert(hits.every((hit) => hit.query.dk), "all SDK pixels should include a dedupe key");
+  assert(hits.every((hit) => hit.query.baid), "all SDK pixels should include a batch id");
   assert(hits.some((hit) => hit.ip), "server should enrich hits with client ip");
   assert(hits.some((hit) => hit.received_at), "server should enrich hits with receive time");
 
@@ -197,6 +206,8 @@ try {
 
   const { parseHits } = await import("../admin/admin-parser.js");
   const report = parseHits(hits);
+  const finalStats = await (await fetch(`${url}/__stats`)).json();
+  assert.equal(finalStats.duplicates, 1, "server stats should preserve duplicate count");
   assert.equal(report.metrics.sessionStarts, 1, "admin parser should count session starts");
   assert.equal(report.metrics.pageviews, 1, "admin parser should count pageviews");
   assert(report.metrics.clicks >= 1, "admin parser should count clicks");

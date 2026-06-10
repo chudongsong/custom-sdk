@@ -37,9 +37,13 @@ await load();
 window.setInterval(load, 3000);
 
 async function load() {
-  const response = await fetch("/__hits", { cache: "no-store" });
-  const hits = await response.json();
-  state.report = parseHits(hits);
+  const [hitsResponse, statsResponse] = await Promise.all([
+    fetch("/__hits", { cache: "no-store" }),
+    fetch("/__stats", { cache: "no-store" }).catch(() => undefined)
+  ]);
+  const hits = await hitsResponse.json();
+  const stats = statsResponse?.ok ? await statsResponse.json() : {};
+  state.report = parseHits(hits, stats);
   render();
 }
 
@@ -65,6 +69,7 @@ function renderMetrics() {
     ["转化", metrics.conversions],
     ["行为路径", metrics.behaviorPaths],
     ["离线补发", metrics.offlineReplayed],
+    ["服务端去重", metrics.serverDuplicates],
     ["异常", metrics.errors]
   ];
 

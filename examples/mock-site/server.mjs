@@ -9,13 +9,34 @@ const gif = Buffer.from("R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAE
 
 export function startMockServer({ port = 4173 } = {}) {
   const hits = [];
+  const dedupeKeys = new Set();
+  const duplicateDrops = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
 
     if (url.pathname === "/aly.gif") {
+      const query = Object.fromEntries(url.searchParams.entries());
+      const dedupeKey = query.dk || fallbackDedupeKey(query);
+      if (dedupeKey && dedupeKeys.has(dedupeKey)) {
+        duplicateDrops.push({
+          dedupe_key: dedupeKey,
+          event: query.evt || "",
+          batch_id: query.baid || "",
+          received_at: Date.now(),
+          raw: url.toString()
+        });
+        res.writeHead(200, {
+          "content-type": "image/gif",
+          "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+          "content-length": String(gif.length)
+        });
+        res.end(gif);
+        return;
+      }
+      if (dedupeKey) dedupeKeys.add(dedupeKey);
       hits.push({
         path: url.pathname,
-        query: Object.fromEntries(url.searchParams.entries()),
+        query,
         raw: url.toString(),
         received_at: Date.now(),
         ip: clientIp(req),
@@ -28,6 +49,17 @@ export function startMockServer({ port = 4173 } = {}) {
         "content-length": String(gif.length)
       });
       res.end(gif);
+      return;
+    }
+
+    if (url.pathname === "/__stats") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        total: hits.length,
+        unique_keys: dedupeKeys.size,
+        duplicates: duplicateDrops.length,
+        duplicate_drops: duplicateDrops
+      }, null, 2));
       return;
     }
 
@@ -73,6 +105,11 @@ export function startMockServer({ port = 4173 } = {}) {
       });
     });
   });
+}
+
+function fallbackDedupeKey(query) {
+  if (!query.ti || !query.eid) return "";
+  return `${query.ti}:${query.evt || "unknown"}:${query.eid}`;
 }
 
 function clientIp(req) {

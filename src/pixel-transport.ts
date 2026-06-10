@@ -5,6 +5,11 @@ export interface PixelPayloadResult {
   tooLong: boolean;
 }
 
+export interface PixelDeliveryMeta {
+  batchId?: string;
+  dedupeKey?: string;
+}
+
 export class PixelTransport {
   private readonly endpoint: string;
   private readonly maxUrlLength: number;
@@ -17,7 +22,7 @@ export class PixelTransport {
     this.cacheBust = config.cacheBust ?? true;
   }
 
-  createUrl(event: SDKEvent, ignoreLength = false): PixelPayloadResult {
+  createUrl(event: SDKEvent, ignoreLength = false, meta: PixelDeliveryMeta = {}): PixelPayloadResult {
     const params = new URLSearchParams();
     params.set("ti", event.app_id);
     params.set("ver", event.sdk_version);
@@ -27,6 +32,8 @@ export class PixelTransport {
     params.set("sid", event.session_id);
     params.set("vid", event.distinct_id);
     params.set("eid", event.event_id);
+    if (meta.batchId) params.set("baid", meta.batchId);
+    if (meta.dedupeKey) params.set("dk", meta.dedupeKey);
     params.set("ts", String(event.time));
     if (event.user_id) params.set("uid", event.user_id);
     params.set("p", event.page.url);
