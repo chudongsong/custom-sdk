@@ -368,6 +368,52 @@ describe("custom analytics sdk", () => {
     expect(joined).toContain("points");
   });
 
+  it("emits separate heatmap scroll and exposure snapshots", async () => {
+    document.body.innerHTML = `
+      <main style="height: 2400px">
+        <section data-track-id="hero-section" style="height: 400px">Hero</section>
+      </main>
+    `;
+    const target = document.querySelector("[data-track-id='hero-section']");
+    Object.defineProperty(target, "getBoundingClientRect", {
+      value: () => ({ top: 10, left: 0, right: 200, bottom: 210, width: 200, height: 200 }),
+      configurable: true
+    });
+
+    const sdk = createSDK({
+      now: () => 1717939200000,
+      randomId: (prefix) => `${prefix}_fixed`
+    });
+
+    sdk.init({
+      appId: "demo-web",
+      endpoint: "/aly.gif",
+      heatmap: {
+        enabled: true,
+        sampleRate: 1,
+        click: false,
+        scroll: true,
+        move: false,
+        exposure: true,
+        gridX: 8,
+        gridY: 8,
+        chunkMaxLength: 1200
+      }
+    });
+
+    window.dispatchEvent(new Event("scroll"));
+    await sdk.flush();
+
+    const joined = getPixelRequests().map(decodeURIComponent).join("\n");
+    expect(joined).toContain("evt=$heatmap_scroll");
+    expect(joined).toContain("kind=scroll");
+    expect(joined).toContain("\"depth_points\"");
+    expect(joined).toContain("evt=$heatmap_exposure");
+    expect(joined).toContain("kind=exposure");
+    expect(joined).toContain("hero-section");
+    expect(joined).not.toContain("evt=$heatmap_click");
+  });
+
   it("collects declarative operation clicks when click plugin is enabled", async () => {
     document.body.innerHTML = `
       <button data-track-id="checkout-submit" data-track-name="提交订单" data-track-area="checkout">
@@ -891,5 +937,75 @@ describe("custom analytics sdk", () => {
 
     expect(report.metrics.serverDuplicates).toBe(2);
     expect(report.metrics.uniqueDedupeKeys).toBe(4);
+  });
+
+  it("parses split heatmap event types for the admin report", () => {
+    const hits = [
+      {
+        path: "/aly.gif",
+        raw: "http://localhost:4173/aly.gif?evt=$heatmap_click",
+        query: {
+          ti: "demo-web",
+          evt: "$heatmap_click",
+          et: "heatmap",
+          dm: "operation",
+          sid: "session_fixed",
+          vid: "visitor_fixed",
+          eid: "evt_click",
+          ts: "1717939200000",
+          p: "http://localhost:4173/index.html",
+          pp: "/index.html",
+          tl: "Home",
+          grid: "8x8",
+          data: JSON.stringify({ points: [[1, 1, 2]] })
+        }
+      },
+      {
+        path: "/aly.gif",
+        raw: "http://localhost:4173/aly.gif?evt=$heatmap_scroll",
+        query: {
+          ti: "demo-web",
+          evt: "$heatmap_scroll",
+          et: "heatmap",
+          dm: "operation",
+          sid: "session_fixed",
+          vid: "visitor_fixed",
+          eid: "evt_scroll",
+          ts: "1717939200100",
+          p: "http://localhost:4173/index.html",
+          pp: "/index.html",
+          tl: "Home",
+          grid: "8x8",
+          data: JSON.stringify({ depth_points: [[0, 4, 1]] })
+        }
+      },
+      {
+        path: "/aly.gif",
+        raw: "http://localhost:4173/aly.gif?evt=$heatmap_exposure",
+        query: {
+          ti: "demo-web",
+          evt: "$heatmap_exposure",
+          et: "heatmap",
+          dm: "operation",
+          sid: "session_fixed",
+          vid: "visitor_fixed",
+          eid: "evt_exposure",
+          ts: "1717939200200",
+          p: "http://localhost:4173/index.html",
+          pp: "/index.html",
+          tl: "Home",
+          grid: "8x8",
+          data: JSON.stringify({ exposures: [{ selector: "[data-track-id=\"hero-section\"]", count: 1 }] })
+        }
+      }
+    ];
+
+    const report = parseHits(hits);
+
+    expect(report.metrics.heatmapClicks).toBe(1);
+    expect(report.metrics.heatmapScrolls).toBe(1);
+    expect(report.metrics.heatmapExposures).toBe(1);
+    expect(report.heatmap.scrollTotal).toBe(1);
+    expect(report.heatmap.exposureTotal).toBe(1);
   });
 });

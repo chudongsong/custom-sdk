@@ -22,7 +22,7 @@ V2 从“单事件采集”升级为“用户会话行为链路重建”：
 | 行为路径 | `$behavior_path` | 聚合点击、滚动停止、鼠标停留为 JSON。 |
 | 运营事件 | `$click`、`$form_submit`、`$conversion` | 继续保留细粒度运营事件。 |
 | 开发者事件 | `$api`、`$js_error`、`$promise_error`、`$resource_error` | 继续保留开发者排障事件。 |
-| 体验事件 | `$heatmap_click`、`$replay_chunk` | 热力图和 rrweb 录屏分片。 |
+| 体验事件 | `$heatmap_click`、`$heatmap_scroll`、`$heatmap_exposure`、`$replay_chunk` | 点击热区、滚动深度、曝光元素和 rrweb 录屏分片。 |
 
 ## 3. 推送约束
 
@@ -68,6 +68,8 @@ IP 不由前端主动采集，避免不稳定和不必要的前端权限问题�
 
 - 用户画像：访客、会话、来源、设备、IP、页面。
 - 行为路径：按时间顺序展示点击、滚动停止、鼠标停留。
+- 热力图：拆分展示点击热区、滚动深度和曝光元素。
+- 录屏分片：展示 replay ID、序号、页面和 rrweb 事件数量摘要。
 
 后台仍每 3 秒读取 `/__hits`，不注入 SDK，避免后台访问污染采集数据。
 
@@ -81,7 +83,7 @@ npm run verify
 
 覆盖：
 
-- `20` 个 SDK 单元测试。
+- `28` 个 SDK 单元测试。
 - Vite 构建，包含独立 `analytics-worker-*.js` 和 `rrweb-replay-*.js` chunk。
-- 富模板 smoke test，收到 `11` 条 `aly.gif` 命中。
-- 后台 parser 能解析 `$session_start` 和 `$behavior_path`。
+- 富模板 smoke test 收到 `14` 条 `aly.gif` 命中，并覆盖三类热力图事件。
+- 后台 parser 能解析 `$session_start`、`$behavior_path`、热力图拆分事件和录屏分片。

@@ -6,7 +6,7 @@
 
 | 模块 | 面向对象 | 核心问题 | 典型事件 |
 | --- | --- | --- | --- |
-| 运营侧采集 | 运营、产品、增长、内容团队 | 用户从哪里来、看了什么、点了什么、是否转化、哪些内容有效。 | `$pageview`、`$pageleave`、`$click`、`$exposure`、`$conversion`、`$replay_chunk`、`$heatmap_click`、业务自定义事件。 |
+| 运营侧采集 | 运营、产品、增长、内容团队 | 用户从哪里来、看了什么、点了什么、是否转化、哪些内容有效。 | `$pageview`、`$pageleave`、`$click`、`$exposure`、`$conversion`、`$replay_chunk`、`$heatmap_click`、`$heatmap_scroll`、`$heatmap_exposure`、业务自定义事件。 |
 | 开发者侧采集 | 前端、后端、测试、SRE | 页面是否稳定、接口是否可用、性能是否达标、错误如何定位。 | `$js_error`、`$promise_error`、`$resource_error`、`$api`、`$web_vitals`、`$sdk_diagnostic`。 |
 
 ## 2. 统一采集域
@@ -57,7 +57,8 @@ interface SDKEvent {
 | `$conversion` | conversion | 手动 | 业务调用转化 API。 | `conversion_id`、`conversion_type`、`amount`、`currency`。 |
 | `$replay_chunk` | replay | 关闭 | 录屏分片 flush。 | `replay_id`、`seq`、`enc`、`data`。 |
 | `$heatmap_click` | heatmap | 关闭 | 点击热力图聚合 flush。 | `heatmap_id`、`grid`、`data`。 |
-| `$heatmap_scroll` | heatmap | 关闭 | 滚动热力图聚合 flush。 | `heatmap_id`、`scrollBuckets`、`data`。 |
+| `$heatmap_scroll` | heatmap | 关闭 | 滚动热力图聚合 flush。 | `heatmap_id`、`grid`、`depth_points`。 |
+| `$heatmap_exposure` | heatmap | 关闭 | 曝光热力图聚合 flush。 | `heatmap_id`、`grid`、`exposures`。 |
 | 业务自定义事件 | custom | 手动 | 业务调用 `track`。 | 业务自定义字段。 |
 
 ### 3.3 运营公共属性

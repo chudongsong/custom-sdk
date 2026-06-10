@@ -19,6 +19,7 @@ const nodes = {
   behaviorPaths: document.querySelector("#behaviorPaths"),
   behaviorPathCount: document.querySelector("#behaviorPathCount"),
   heatmap: document.querySelector("#heatmap"),
+  heatmapInsights: document.querySelector("#heatmapInsights"),
   heatmapTotal: document.querySelector("#heatmapTotal"),
   replayList: document.querySelector("#replayList"),
   replayCount: document.querySelector("#replayCount"),
@@ -68,6 +69,9 @@ function renderMetrics() {
     ["表单", metrics.forms],
     ["转化", metrics.conversions],
     ["行为路径", metrics.behaviorPaths],
+    ["热图点击", metrics.heatmapClicks],
+    ["滚动热图", metrics.heatmapScrolls],
+    ["曝光热图", metrics.heatmapExposures],
     ["离线补发", metrics.offlineReplayed],
     ["服务端去重", metrics.serverDuplicates],
     ["异常", metrics.errors]
@@ -191,7 +195,14 @@ function renderBehaviorPaths() {
 
 function renderHeatmap() {
   const heatmap = state.report.heatmap;
-  nodes.heatmapTotal.textContent = `${heatmap.total} 次`;
+  nodes.heatmapTotal.textContent = `${heatmap.total + heatmap.scrollTotal + heatmap.exposureTotal} 次`;
+  const topExposure = [...heatmap.exposures].sort((a, b) => b.count - a.count)[0];
+  nodes.heatmapInsights.innerHTML = `
+    <div><span>点击热区</span><strong>${heatmap.total}</strong></div>
+    <div><span>滚动深度</span><strong>${heatmap.scrollTotal}</strong></div>
+    <div><span>曝光元素</span><strong>${heatmap.exposureTotal}</strong></div>
+    <div><span>最高曝光</span><strong>${escapeHtml(topExposure?.text || topExposure?.selector || "-")}</strong></div>
+  `;
   const pointMap = new Map(heatmap.points.map((point) => [`${point.x}:${point.y}`, point.count]));
 
   const cells = [];

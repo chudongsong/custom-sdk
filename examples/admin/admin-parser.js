@@ -15,7 +15,9 @@ const EVENT_LABELS = {
   "$sdk_diagnostic": "SDK 诊断",
   "$replay_start": "录屏开始",
   "$replay_chunk": "录屏分片",
-  "$heatmap_click": "热力图聚合"
+  "$heatmap_click": "点击热力图",
+  "$heatmap_scroll": "滚动热力图",
+  "$heatmap_exposure": "曝光热力图"
 };
 
 export function parseHits(hits = [], stats = {}) {
@@ -45,7 +47,10 @@ export function parseHits(hits = [], stats = {}) {
       api: count(events, "$api"),
       errors: events.filter((event) => event.type === "error").length,
       replayChunks: count(events, "$replay_chunk"),
-      heatmapEvents: events.filter((event) => event.event.startsWith("$heatmap")).length
+      heatmapEvents: events.filter((event) => event.event.startsWith("$heatmap")).length,
+      heatmapClicks: count(events, "$heatmap_click"),
+      heatmapScrolls: count(events, "$heatmap_scroll"),
+      heatmapExposures: count(events, "$heatmap_exposure")
     },
     sessions,
     profiles: buildProfiles(events),
@@ -203,7 +208,11 @@ function describeAction(event, props) {
     case "$replay_chunk":
       return `录屏分片 ${event.replayId || ""} #${event.seq || "-"}`;
     case "$heatmap_click":
-      return `热力图聚合 ${event.grid || props.grid || ""}`;
+      return `点击热力图 ${event.grid || props.grid || ""}`;
+    case "$heatmap_scroll":
+      return `滚动热力图 ${event.grid || props.grid || ""}`;
+    case "$heatmap_exposure":
+      return `曝光热力图 ${event.heatmapId || props.heatmap_id || ""}`;
     default:
       return EVENT_LABELS[event.event] || event.event;
   }
@@ -248,19 +257,46 @@ function buildBehaviorPaths(events) {
 
 function buildHeatmap(events) {
   const points = [];
+  const scrollPoints = [];
+  const exposures = [];
   for (const event of events) {
-    if (event.event !== "$heatmap_click") continue;
     const data = typeof event.data === "object" ? event.data : safeJson(event.query.data);
-    for (const point of data.points || []) {
-      if (Array.isArray(point) && point.length >= 3) {
-        points.push({ x: Number(point[0]), y: Number(point[1]), count: Number(point[2]) });
+    if (event.event === "$heatmap_click") {
+      for (const point of data.points || []) {
+        if (Array.isArray(point) && point.length >= 3) {
+          points.push({ x: Number(point[0]), y: Number(point[1]), count: Number(point[2]) });
+        }
+      }
+    }
+    if (event.event === "$heatmap_scroll") {
+      for (const point of data.depth_points || []) {
+        if (Array.isArray(point) && point.length >= 3) {
+          scrollPoints.push({ x: Number(point[0]), y: Number(point[1]), count: Number(point[2]) });
+        }
+      }
+    }
+    if (event.event === "$heatmap_exposure") {
+      for (const exposure of data.exposures || []) {
+        if (exposure && typeof exposure === "object") {
+          exposures.push({
+            selector: String(exposure.selector || ""),
+            text: String(exposure.text || ""),
+            count: Number(exposure.count || 0)
+          });
+        }
       }
     }
   }
   return {
     total: points.reduce((sum, point) => sum + point.count, 0),
     max: Math.max(0, ...points.map((point) => point.count)),
-    points
+    points,
+    scrollTotal: scrollPoints.reduce((sum, point) => sum + point.count, 0),
+    scrollMax: Math.max(0, ...scrollPoints.map((point) => point.count)),
+    scrollPoints,
+    exposureTotal: exposures.reduce((sum, exposure) => sum + exposure.count, 0),
+    exposureMax: Math.max(0, ...exposures.map((exposure) => exposure.count)),
+    exposures
   };
 }
 

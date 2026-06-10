@@ -480,7 +480,7 @@ sdk.init({
 像素请求：
 
 ```text
-GET /aly.gif?evt=replayChunk&dm=operation&rid=replay_xxx&seq=1&enc=lz&data=...
+GET /aly.gif?evt=$replay_chunk&dm=operation&rid=replay_xxx&seq=1&enc=lz&data=...
 ```
 
 输入框真实值和页面敏感文本不得出现在 `data` 中。
@@ -499,13 +499,14 @@ sdk.init({
     click: true,
     scroll: true,
     move: false,
+    exposure: true,
     gridX: 64,
     gridY: 64
   }
 });
 ```
 
-用户点击页面多个区域。
+用户点击页面多个区域、滚动页面，并让标记元素进入视口。
 
 ### 预设结果
 
@@ -522,13 +523,15 @@ sdk.init({
 }
 ```
 
-像素请求：
+像素请求，同一次 flush 可能同时生成：
 
 ```text
-GET /aly.gif?evt=heatmapClick&dm=operation&hid=hm_xxx&grid=64x64&enc=lz&data=...
+GET /aly.gif?evt=$heatmap_click&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
+GET /aly.gif?evt=$heatmap_scroll&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
+GET /aly.gif?evt=$heatmap_exposure&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
 ```
 
-`data` 是聚合后的稀疏矩阵，不是逐点原始轨迹。
+点击 `data.points` 和滚动 `data.depth_points` 是聚合后的稀疏矩阵，曝光 `data.exposures` 是可见元素聚合结果，不上传逐点原始轨迹。
 
 ## 21. 离线缓存
 
@@ -676,7 +679,7 @@ sdk.init({
 | 曝光 | `$exposure` | 持续 1 秒才上报。 |
 | 转化 | `$conversion` | 包含 `domain: operation` 和 `conversion_id`。 |
 | 录屏 | `$replay_chunk` | 分片通过 `aly.gif` 上传且敏感值遮罩。 |
-| 热力图 | `$heatmap_click` | 本地聚合为稀疏矩阵后上传。 |
+| 热力图 | `$heatmap_click`、`$heatmap_scroll`、`$heatmap_exposure` | 本地聚合为稀疏矩阵和曝光摘要后上传。 |
 | JS 错误 | `$js_error` | stack 截断和脱敏。 |
 | Promise 错误 | `$promise_error` | reason 标准化。 |
 | API 请求 | `$api` | 不采请求体和响应体。 |

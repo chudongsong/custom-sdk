@@ -736,7 +736,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
   private flushHeatmap() {
     if (!this.heatmap) return;
     for (const snapshot of this.heatmap.drain()) {
-      this.emit("$heatmap_click", "operation", "heatmap", snapshot);
+      this.emit(heatmapEventName(snapshot.kind), "operation", "heatmap", snapshot);
     }
   }
 
@@ -962,6 +962,17 @@ function deviceType() {
   if (/ipad|tablet/.test(ua) || (width >= 768 && width < 1024 && /mobile/.test(ua))) return "tablet";
   if (/mobi|iphone|android/.test(ua) || width < 768) return "mobile";
   return "desktop";
+}
+
+function heatmapEventName(kind: "click" | "scroll" | "exposure") {
+  switch (kind) {
+    case "scroll":
+      return "$heatmap_scroll";
+    case "exposure":
+      return "$heatmap_exposure";
+    default:
+      return "$heatmap_click";
+  }
 }
 
 function delay(ms: number) {
