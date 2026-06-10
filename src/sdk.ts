@@ -222,6 +222,7 @@ export class AnalyticsSDK implements CustomAnalyticsSDK {
       this.replay = module.createReplayRecorder(replayId, replayConfig);
       this.replay.start();
     }).catch(() => {
+      if (!this.config || token !== this.replayLoadToken || !this.consent || typeof window === "undefined") return;
       void this.emitDiagnostic("replay_load_failed");
     });
   }
