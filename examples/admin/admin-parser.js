@@ -39,6 +39,7 @@ export function parseHits(hits = []) {
       heartbeats: count(events, "$heartbeat"),
       visibilityChanges: count(events, "$visibility_change"),
       behaviorPaths: count(events, "$behavior_path"),
+      offlineReplayed: events.filter((event) => event.eventProperties.delivery_status === "offline_replayed").length,
       api: count(events, "$api"),
       errors: events.filter((event) => event.type === "error").length,
       replayChunks: count(events, "$replay_chunk"),

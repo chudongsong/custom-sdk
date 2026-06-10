@@ -64,6 +64,7 @@ function renderMetrics() {
     ["表单", metrics.forms],
     ["转化", metrics.conversions],
     ["行为路径", metrics.behaviorPaths],
+    ["离线补发", metrics.offlineReplayed],
     ["异常", metrics.errors]
   ];
 

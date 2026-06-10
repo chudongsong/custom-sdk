@@ -16,10 +16,14 @@ sdk.init({
   appId: "rich-example-web",
   endpoint: "/aly.gif",
   debug: true,
+  batchSize: 10,
   transport: {
     pixelEndpoint: "/aly.gif",
     pixelMaxUrlLength: 1800,
-    cacheBust: true
+    cacheBust: true,
+    retryCount: 2,
+    retryBaseDelay: 300,
+    offlineMaxEvents: 1000
   },
   plugins: {
     click: true,
