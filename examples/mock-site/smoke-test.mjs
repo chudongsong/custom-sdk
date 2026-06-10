@@ -72,6 +72,19 @@ try {
     });
   }
   window.fetch = fetch.bind(globalThis);
+  Object.defineProperty(window.HTMLElement.prototype, "getBoundingClientRect", {
+    value() {
+      return {
+        top: 20,
+        left: 20,
+        right: 320,
+        bottom: 220,
+        width: 300,
+        height: 200
+      };
+    },
+    configurable: true
+  });
 
   class NetworkImage {
     onload = null;
@@ -145,7 +158,7 @@ try {
       click: true,
       scroll: true,
       move: false,
-      exposure: false,
+      exposure: true,
       gridX: 16,
       gridY: 16,
       chunkMaxLength: 1200
@@ -163,6 +176,7 @@ try {
     screenX: 300,
     screenY: 240
   }));
+  window.dispatchEvent(new Event("scroll"));
 
   const form = document.querySelector("form");
   assert(form, "rich template should contain forms");
@@ -191,7 +205,9 @@ try {
   assert(events.includes("$api"), "api pixel was not received");
   assert(events.includes("$conversion"), "conversion pixel was not received");
   assert(events.includes("$replay_chunk"), "replay chunk pixel was not received");
-  assert(events.includes("$heatmap_click"), "heatmap pixel was not received");
+  assert(events.includes("$heatmap_click"), "heatmap click pixel was not received");
+  assert(events.includes("$heatmap_scroll"), "heatmap scroll pixel was not received");
+  assert(events.includes("$heatmap_exposure"), "heatmap exposure pixel was not received");
   assert(hits.every((hit) => hit.query.dk), "all SDK pixels should include a dedupe key");
   assert(hits.every((hit) => hit.query.baid), "all SDK pixels should include a batch id");
   assert(hits.some((hit) => hit.ip), "server should enrich hits with client ip");
@@ -214,6 +230,9 @@ try {
   assert(report.metrics.behaviorPaths >= 1, "admin parser should count behavior paths");
   assert(report.metrics.forms >= 1, "admin parser should count form submits");
   assert(report.metrics.conversions >= 1, "admin parser should count conversions");
+  assert(report.metrics.heatmapClicks >= 1, "admin parser should count heatmap clicks");
+  assert(report.metrics.heatmapScrolls >= 1, "admin parser should count heatmap scrolls");
+  assert(report.metrics.heatmapExposures >= 1, "admin parser should count heatmap exposures");
   assert(report.timeline.some((item) => item.action.includes("点击")), "admin parser should produce operation click actions");
   assert(report.timeline.some((item) => item.action.includes("行为路径")), "admin parser should produce behavior path actions");
   assert(report.timeline.some((item) => item.action.includes("提交表单")), "admin parser should produce operation form actions");

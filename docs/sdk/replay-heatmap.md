@@ -16,7 +16,7 @@ V1 只做轻量版：
 - 不采集 Cookie、Token、请求体、响应体。
 - 不采集 Canvas 像素、视频帧、音频、摄像头、麦克风。
 - 不采集跨域 iframe 内容。
-- 不做完整可视化后台，只提供数据采集协议和预设结果。
+- 提供本地数据后台用于解析 `/__hits`，但生产级权限、存储和回放播放器仍需单独建设。
 
 ## 2. 录屏回放
 
@@ -93,7 +93,7 @@ sdk.init({
 由于上传只能使用 `aly.gif`，录屏数据必须分片：
 
 ```text
-GET /aly.gif?evt=replayChunk&dm=operation&rid=replay_xxx&seq=1&enc=lz&data=...
+GET /aly.gif?evt=$replay_chunk&dm=operation&rid=replay_xxx&seq=1&enc=json&data=...
 ```
 
 参数：
@@ -152,7 +152,7 @@ GET /aly.gif?evt=replayChunk&dm=operation&rid=replay_xxx&seq=1&enc=lz&data=...
 | --- | --- | --- | --- |
 | `$heatmap_click` | heatmap | operation | 点击热力图聚合。 |
 | `$heatmap_scroll` | heatmap | operation | 滚动深度聚合。 |
-| `$heatmap_move` | heatmap | operation | 鼠标移动热力图，默认关闭。 |
+| `$heatmap_move` | heatmap | operation | 鼠标移动热力图预留事件，当前默认不实现。 |
 | `$heatmap_exposure` | heatmap | operation | 曝光热区聚合。 |
 
 ### 3.3 聚合策略
@@ -162,7 +162,7 @@ V1 不逐点上传高频轨迹，而是在本地聚合：
 - 点击热力图：按视口归一化坐标分桶。
 - 滚动热力图：按页面高度百分比分桶。
 - 移动热力图：默认关闭，开启后采样和节流。
-- 曝光热力图：按 `data-exposure-id` 和视口区域聚合。
+- 曝光热力图：按 `data-track-id`、`data-track-name` 或可见语义容器聚合。
 
 推荐分桶：
 
@@ -180,7 +180,7 @@ V1 不逐点上传高频轨迹，而是在本地聚合：
 点击热力图示例：
 
 ```text
-GET /aly.gif?evt=heatmapClick&dm=operation&hid=hm_xxx&p=%2Fhome&vw=1280&vh=720&grid=64x64&data=...
+GET /aly.gif?evt=$heatmap_click&dm=operation&hid=hm_xxx&p=%2Fhome&vw=1280&vh=720&grid=64x64&data=...
 ```
 
 `data` 内容为本地聚合后的稀疏矩阵，经过脱敏、压缩和 URL 安全编码。
@@ -201,6 +201,43 @@ GET /aly.gif?evt=heatmapClick&dm=operation&hid=hm_xxx&p=%2Fhome&vw=1280&vh=720&g
 - 第一位：x 分桶。
 - 第二位：y 分桶。
 - 第三位：计数。
+
+滚动热力图示例：
+
+```text
+GET /aly.gif?evt=$heatmap_scroll&dm=operation&hid=hm_xxx&p=%2Fhome&grid=64x64&data=...
+```
+
+解码后结构：
+
+```json
+{
+  "depth_points": [
+    [0, 12, 3],
+    [0, 44, 1]
+  ]
+}
+```
+
+曝光热力图示例：
+
+```text
+GET /aly.gif?evt=$heatmap_exposure&dm=operation&hid=hm_xxx&p=%2Fhome&grid=64x64&data=...
+```
+
+解码后结构：
+
+```json
+{
+  "exposures": [
+    {
+      "selector": "[data-track-id=\"hero-section\"]",
+      "text": "Hero",
+      "count": 2
+    }
+  ]
+}
+```
 
 ### 3.5 配置
 
@@ -242,7 +279,7 @@ sdk.init({
 - 未开启 consent 时不采集录屏和热力图。
 - 默认配置下录屏和热力图均关闭。
 - 开启录屏后生成 `$replay_start`、`$replay_chunk`、`$replay_end`。
-- 开启热力图后生成 `$heatmap_click` 和 `$heatmap_scroll`。
+- 开启热力图后按配置生成 `$heatmap_click`、`$heatmap_scroll` 和 `$heatmap_exposure`。
 - 所有上传都使用 `GET /aly.gif?...`。
 - 输入框真实值、Cookie、Token、请求体、响应体不得进入分片。
 - URL 超长时截断、摘要化或丢弃，不切换上传方式。

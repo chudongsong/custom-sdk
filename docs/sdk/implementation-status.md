@@ -34,7 +34,7 @@
 | API | `$api` fetch 元数据 | 可选开启，采 URL、method、status、duration、success，不采请求体/响应体。 |
 | 异常 | `$js_error`、`$promise_error`、`$resource_error` | 默认监听同步异常、Promise 异常和资源错误。 |
 | 录屏 | rrweb 懒加载录屏分片 | `replay.enabled=true` 时动态加载 `rrweb-replay-*.js`，通过 `aly.gif` 上传分片。 |
-| 热力图 | 点击/滚动本地聚合 | `HeatmapAggregator` 聚合分桶后上传 `$heatmap_click`。 |
+| 热力图 | 点击/滚动/曝光本地聚合 | `HeatmapAggregator` 分别上传 `$heatmap_click`、`$heatmap_scroll`、`$heatmap_exposure`。 |
 | 隐私 | URL/query/字符串/对象脱敏 | `privacy.ts` 覆盖 token、password、secret、phone、email 等。 |
 | consent | 授权开关 | `consent=false` 不采集、不上报；单测覆盖。 |
 | 可靠推送 | `batchSize`、重试、离线缓存、补发 | `OfflineEventStore` 优先 IndexedDB，回退 localStorage；补发事件带 `delivery_status=offline_replayed`。 |
@@ -50,7 +50,6 @@
 | 插件体系 | 通过 `plugins` 配置开关实现内置模块开关。 | 尚未实现 `sdk.use(plugin)` 外部插件协议。 |
 | 队列 flush | 支持内存队列、手动 flush、配置式 `flushInterval`、`batchSize` 阈值触发、幂等去重和并发 flush 保护。 | 尚未实现多标签队列协调。 |
 | 录屏 | 已接入 rrweb recorder，懒加载独立 chunk。 | 尚未实现服务端重组、后台播放、压缩编码和完整 rrweb player 回放。 |
-| 热力图 | 支持点击/滚动分桶聚合。 | 当前统一发 `$heatmap_click`，未拆分 `$heatmap_scroll`、`$heatmap_exposure`。 |
 | 异常诊断 | 有基础错误和 `$sdk_diagnostic`。 | 诊断限频、错误风暴保护和 source map 解析未实现。 |
 | API 监控 | 支持 `fetch`。 | `XMLHttpRequest` 监控未实现，trace ID 白名单未实现。 |
 | 页面离开上报 | `pagehide` 和 `visibilitychange hidden` 时尝试 flush，离线时进入本地缓存。 | 不保证离场瞬间所有图片请求完成。 |
@@ -60,7 +59,7 @@
 
 | 分类 | 未完成项 |
 | --- | --- |
-| 曝光采集 | `$exposure`、声明式曝光、曝光停留时长。 |
+| 独立曝光事件 | `$exposure`、曝光停留时长和曝光转化漏斗。 |
 | 性能监控 | FCP、LCP、CLS、INP、TTFB、路由级性能和评分。 |
 | XHR 监控 | `XMLHttpRequest` patch、状态和耗时采集。 |
 | 批次持久化 | 生产数据库唯一索引、跨进程去重状态。 |
@@ -73,14 +72,13 @@
 
 | 命令 | 覆盖 |
 | --- | --- |
-| `npm test` | 26 个单元测试，覆盖像素上报、初始化画像、生命周期、行为路径、可靠推送、幂等去重、隐私脱敏、点击、表单、路由、API、错误、录屏懒加载、重复初始化和超长诊断。 |
-| `npm run test:demo` | 构建 SDK，启动富模板 mock server，验证页面、SDK bundle、Worker chunk、rrweb lazy chunk、后台路由、像素命中、服务端去重和后台解析。 |
+| `npm test` | 28 个单元测试，覆盖像素上报、初始化画像、生命周期、行为路径、可靠推送、幂等去重、隐私脱敏、点击、表单、路由、API、错误、录屏懒加载、热力图拆分、重复初始化和超长诊断。 |
+| `npm run test:demo` | 构建 SDK，启动富模板 mock server，验证页面、SDK bundle、Worker chunk、rrweb lazy chunk、后台路由、三类热力图像素命中、服务端去重和后台解析。 |
 | `npm run verify` | 串联单测和富模板 smoke test。 |
 
 ## 6. 下一步建议
 
 1. 将 mock server 的内存去重迁移为生产接收端唯一索引或幂等表设计。
-2. 拆分热力图事件类型，补 `$heatmap_scroll` 和 `$heatmap_exposure`。
-3. 增加真实浏览器测试，用 Playwright 验证 Worker、rrweb 懒加载、离线补发和浏览器网络面板行为。
-4. 实现性能监控和 XHR 监控，完善开发者侧闭环。
-5. 为 `/admin` 增加筛选、导出、清空命中、录屏播放和热力图页面叠加能力。
+2. 增加真实浏览器测试，用 Playwright 验证 Worker、rrweb 懒加载、离线补发和浏览器网络面板行为。
+3. 实现性能监控和 XHR 监控，完善开发者侧闭环。
+4. 为 `/admin` 增加筛选、导出、清空命中、录屏播放和热力图页面叠加能力。

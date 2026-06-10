@@ -83,7 +83,7 @@ GET /aly.gif?ti=demo-web&ver=1.0.0&evt=pageLoad&sid=session_xxx&vid=visitor_xxx&
 | --- | --- | --- |
 | `ti` | 应用 ID。 | `demo-web` |
 | `ver` | SDK 版本。 | `1.0.0` |
-| `evt` | 事件名或短事件码。 | `pageLoad` |
+| `evt` | 事件名或短事件码。 | `$pageview` |
 | `et` | 事件类型。 | `behavior` |
 | `dm` | 采集域。 | `operation` |
 | `sid` | 会话 ID。 | `session_xxx` |
@@ -135,13 +135,15 @@ SDK 只支持 `pixel` 上传模式。
 录屏分片示例：
 
 ```text
-GET /aly.gif?evt=replayChunk&dm=operation&rid=replay_xxx&seq=1&enc=lz&data=...
+GET /aly.gif?evt=$replay_chunk&dm=operation&rid=replay_xxx&seq=1&enc=json&data=...
 ```
 
 热力图分片示例：
 
 ```text
-GET /aly.gif?evt=heatmapClick&dm=operation&hid=hm_xxx&grid=64x64&enc=lz&data=...
+GET /aly.gif?evt=$heatmap_click&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
+GET /aly.gif?evt=$heatmap_scroll&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
+GET /aly.gif?evt=$heatmap_exposure&dm=operation&hid=hm_xxx&grid=64x64&enc=json&data=...
 ```
 
 分片规则：

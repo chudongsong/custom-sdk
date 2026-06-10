@@ -249,6 +249,37 @@ pre {
   padding: 14px;
 }
 
+.heatmap-insights {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.heatmap-insights div {
+  min-width: 0;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.heatmap-insights span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.heatmap-insights strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .heat-cell {
   aspect-ratio: 1;
   min-width: 8px;
@@ -336,5 +367,9 @@ pre {
 
   .timeline-item {
     grid-template-columns: 1fr;
+  }
+
+  .heatmap-insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
